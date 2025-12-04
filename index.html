@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅遊行程計畫 - 現代卡片視覺版 (只保留行李清單)</title>
+    <!-- 引入 Tailwind CSS 確保響應式設計和清晰排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 載入 Inter 字體，確保清晰度 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* 淺灰色背景 */
+            color: #1e293b; 
+        }
+        /* 主體色調：深藍/紫 */
+        .primary-bg {
+            background-color: #4f46e5; /* 靛藍色 */
+        }
+        .primary-text {
+            color: #4f46e5;
+        }
+        /* 導覽按鈕樣式 */
+        .tab-button {
+            transition: all 0.2s;
+            min-width: 130px;
+            height: 80px;
+            font-size: 1.125rem; /* text-lg */
+        }
+        .tab-active {
+            box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
+            border: 2px solid white;
+            transform: scale(1.05);
+            font-weight: bold;
+        }
+        /* 行程卡片樣式 */
+        .itinerary-card {
+            border-left: 5px solid #4f46e5; 
+            transition: all 0.2s;
+        }
+        /* 可點擊地圖的元素樣式 */
+        .map-clickable {
+            cursor: pointer;
+            text-decoration: underline;
+            color: #1e40af; /* 深藍色 */
+            font-weight: bold;
+        }
+        /* 飯店資訊卡片 */
+        .hotel-card {
+            background-color: #eef2ff; /* 淺靛藍色 */
+            border: 1px solid #c7d2fe;
+        }
+        /* Modal 樣式 */
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            transition: opacity 0.3s ease;
+        }
+
+        /* 行李清單項目樣式 */
+        .packing-item {
+            transition: background-color 0.15s, transform 0.15s;
+            margin-top: 8px;
+        }
+        .packing-item.checked {
+            text-decoration: line-through;
+            opacity: 0.6;
+            background-color: #f3f4f6;
+        }
+    </style>
+    <script>
+        // 設定 Tailwind 配置以使用自定義顏色
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-blue': '#4f46e5',
+                        'secondary-card': '#eef2ff',
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+    
+    <!-- 主 Header 區域 -->
+    <header class="primary-bg p-6 pb-20 shadow-2xl relative">
+        <div class="max-w-4xl mx-auto flex justify-between items-start">
+            <!-- 標題區 -->
+            <div>
+                <h1 class="text-3xl font-extrabold text-white">
+                    ✈️ 名古屋之旅
+                </h1>
+                <p class="text-lg text-indigo-200 mt-1">
+                    3月13日 - 3月19日
+                </p>
+            </div>
+            
+            <!-- Icon 區域 (右上方) - 只保留行李清單 -->
+            <div class="flex space-x-4 mt-1 text-white">
+                <!-- 行李清單 Icon -->
+                <button id="packing-list-icon-button"
+                        class="p-2 rounded-full hover:bg-indigo-600 transition duration-150 transform hover:scale-110"
+                        title="行李清單">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-case-sensitive"><path d="m3 15 4-8 4 8"/><path d="M4 13h6"/><path d="M15 15h3c.8 0 1.5-.7 1.5-1.5v-9c0-.8-.7-1.5-1.5-1.5h-2c-.8 0-1.5.7-1.5 1.5v7.5"/><path d="M15 7h4"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 日期切換 Tab 區 (固定在頂部下方，可左右滑動) -->
+    <div class="sticky top-0 z-30 bg-primary-bg">
+        <nav id="day-tabs" class="flex overflow-x-auto whitespace-nowrap p-2 -mt-12 max-w-4xl mx-auto">
+            <!-- Tab 按鈕將由 JS 動態生成 -->
+        </nav>
+    </div>
+
+    <main id="itinerary-container" class="max-w-4xl mx-auto p-4 md:p-8 -mt-12">
+        <!-- 行程內容將由 JavaScript 渲染 -->
+    </main>
+
+    <footer class="p-6 mt-8 bg-gray-700 text-white text-center">
+        <p class="text-base">祝您旅途平安愉快！</p>
+        <p id="user-id-display" class="text-xs mt-2 opacity-75">Loading User ID...</p>
+    </footer>
+
+    <!-- ------------------------------------------------------------------- -->
+    <!-- Modal: 行李清單 (Packing List) -->
+    <!-- ------------------------------------------------------------------- -->
+    <div id="packing-list-modal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto transform transition-all p-6 md:p-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-3xl font-bold primary-text">🧳 行李清單</h2>
+                <!-- 關閉按鈕 -->
+                <button onclick="toggleModal('packing-list-modal')" class="text-gray-500 hover:text-gray-900 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 15 6-6"/></svg>
+                </button>
+            </div>
+
+            <!-- 清單內容區 -->
+            <div id="packing-list-content" class="space-y-4 pt-2">
+                <!-- 清單項目將由 JS/Firestore 渲染 -->
+                <div class="text-center text-gray-500 py-10">
+                    <p id="packing-loading-message">載入中...</p>
+                </div>
+            </div>
+            
+            <div class="mt-8 text-sm text-gray-500 p-2 border-t pt-4">
+                <p>💡 點擊項目即可勾選/取消，清單會自動儲存並同步。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 程式碼 - 移至 body 結尾，確保 DOM 元素已載入 -->
+    <script type="module">
+        // Firebase 相關引入
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Firestore 必須使用的全域變數
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db;
+        let auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        // --- 新的清單資料結構 ---
+        const PACKING_COLLECTION_PATH = `/artifacts/${appId}/users`;
+        const PACKING_DOC_NAME = 'main_list'; 
+
+        // 預設清單 (分為兩類)
+        const DEFAULT_PACKING_LIST = {
+            carryOn: [
+                { id: crypto.randomUUID(), name: '護照與簽證', checked: false, category: 'carryOn' },
+                { id: crypto.randomUUID(), name: '登機證 / 電子機票', checked: false, category: 'carryOn' },
+                { id: crypto.randomUUID(), name: '日幣現金 / 信用卡', checked: false, category: 'carryOn' },
+                { id: crypto.randomUUID(), name: '手機 / 充電器 / 行動電源', checked: false, category: 'carryOn' },
+                { id: crypto.randomUUID(), name: '隨身藥品', checked: false, category: 'carryOn' },
+                { id: crypto.randomUUID(), name: '緊急換洗衣物 (T-shirt)', checked: false, category: 'carryOn' },
+            ],
+            checkedLuggage: [
+                { id: crypto.randomUUID(), name: '換洗衣物 (7天)', checked: false, category: 'checkedLuggage' },
+                { id: crypto.randomUUID(), name: '防水/保暖外套', checked: false, category: 'checkedLuggage' },
+                { id: crypto.randomUUID(), name: '盥洗用品 (大瓶裝)', checked: false, category: 'checkedLuggage' },
+                { id: crypto.randomUUID(), name: '轉換插頭 / 延長線', checked: false, category: 'checkedLuggage' },
+                { id: crypto.randomUUID(), name: '旅行用毛巾', checked: false, category: 'checkedLuggage' },
+                { id: crypto.randomUUID(), name: '空的保溫瓶/水壺', checked: false, category: 'checkedLuggage' },
+                { id: crypto.randomUUID(), name: '化妝品/保養品', checked: false, category: 'checkedLuggage' },
+            ]
+        };
+        
+        // 狀態儲存為物件
+        let packingList = {};
+
+
+        // --- Firebase 初始化與認證 ---
+        function initFirebase() {
+            if (!firebaseConfig) {
+                console.error("Firebase config is missing.");
+                return;
+            }
+            
+            setLogLevel('debug'); // 開啟 Firestore Debug Log
+            
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            // 監聽認證狀態，一旦登入完成，就設定 userId 並開始載入資料
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    isAuthReady = true;
+                    document.getElementById('user-id-display').textContent = `User ID: ${userId}`;
+                    console.log("Firebase Auth Ready. User ID:", userId);
+                    startDataListeners(); // 認證完成後，開始監聽 Firestore
+                } else {
+                    // 如果沒有用戶，但認證流程走完 (匿名登入或自定義 token 失敗)，也標記為 Ready
+                    userId = null;
+                    isAuthReady = true; 
+                    document.getElementById('user-id-display').textContent = 'User ID: Anonymous (Data not loaded)';
+                    console.log("Firebase Auth Ready. User signed out.");
+                }
+            });
+
+            // 執行登入流程
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken)
+                    .catch((error) => {
+                        console.error("Custom token sign-in failed:", error);
+                        // 如果自定義 token 失敗，嘗試匿名登入作為 fallback
+                        signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+                    });
+            } else {
+                // 如果沒有提供 token，則匿名登入
+                signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+            }
+        }
+
+        // --- Firestore 資料操作 ---
+
+        /**
+         * 獲取 Packing List 文件參考
+         */
+        function getPackingDocRef() {
+            if (!db || !userId) {
+                console.error("Database or User ID not ready.");
+                return null;
+            }
+            // 存儲路徑: /artifacts/{appId}/users/{userId}/packing_list/main_list
+            const packingListPath = `${PACKING_COLLECTION_PATH}/${userId}/packing_list/${PACKING_DOC_NAME}`;
+            return doc(db, packingListPath);
+        }
+
+        /**
+         * 監聽並同步 Packing List 資料
+         */
+        function startDataListeners() {
+            if (!isAuthReady || !userId || !db) return;
+
+            const docRef = getPackingDocRef();
+            if (!docRef) return;
+
+            onSnapshot(docRef, (docSnap) => {
+                const loadingMessage = document.getElementById('packing-loading-message');
+                if (loadingMessage) loadingMessage.classList.add('hidden');
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    // 確保載入的資料符合新結構
+                    packingList.carryOn = data.carryOn || [];
+                    packingList.checkedLuggage = data.checkedLuggage || [];
+                    console.log("Packing List loaded:", packingList);
+                } else {
+                    // 如果文檔不存在，使用預設清單並嘗試儲存
+                    packingList = DEFAULT_PACKING_LIST;
+                    savePackingList(packingList);
+                    console.log("No packing list found. Initializing with default.");
+                }
+                renderPackingList(); // 每次資料更新時重新渲染
+            }, (error) => {
+                console.error("Error listening to packing list:", error);
+                const loadingMessage = document.getElementById('packing-loading-message');
+                if (loadingMessage) {
+                    loadingMessage.textContent = '資料載入錯誤，請檢查連線。';
+                    loadingMessage.classList.remove('hidden');
+                }
+            });
+        }
+
+        /**
+         * 將當前的 packingList (整個物件) 寫入 Firestore
+         * @param {Object} listObject - 包含 carryOn 和 checkedLuggage 的清單物件
+         */
+        async function savePackingList(listObject) {
+            const docRef = getPackingDocRef();
+            if (!docRef) {
+                console.warn("Cannot save packing list: Doc reference not ready.");
+                return;
+            }
+            try {
+                // 使用 setDoc 覆蓋清單
+                await setDoc(docRef, { ...listObject, lastUpdated: new Date() }, { merge: false });
+            } catch (error) {
+                console.error("Failed to save packing list:", error);
+            }
+        }
+
+        // --- Packing List 互動邏輯 ---
+
+        /**
+         * 切換項目的勾選狀態 (現在需要知道是哪個類別)
+         * @param {string} itemId - 項目 UUID
+         * @param {string} category - 類別 ('carryOn' 或 'checkedLuggage')
+         */
+        window.togglePackingItem = function(itemId, category) {
+            // 確保類別存在
+            if (!packingList[category]) return;
+
+            const itemIndex = packingList[category].findIndex(item => item.id === itemId);
+            if (itemIndex > -1) {
+                // 切換狀態
+                packingList[category][itemIndex].checked = !packingList[category][itemIndex].checked;
+                // 儲存到 Firestore
+                savePackingList(packingList); 
+            }
+        }
+        
+        // --- Packing List UI 渲染 ---
+
+        /**
+         * 渲染 Packing List Modal 內容
+         */
+        function renderPackingList() {
+            const content = document.getElementById('packing-list-content');
+            if (!content) return;
+            
+            // Helper function to render a category
+            const renderCategory = (title, items) => {
+                let html = `<h3 class="text-xl font-bold primary-text mt-6 mb-2 border-b-2 border-primary-blue pb-1">${title}</h3>`;
+                
+                // 排序：未勾選的在前，已勾選的在後
+                const sortedItems = [...items].sort((a, b) => {
+                    if (a.checked === b.checked) return 0;
+                    return a.checked ? 1 : -1;
+                });
+
+                if (sortedItems.length === 0) {
+                    html += `<p class="text-gray-500 py-2">此類別無項目。</p>`;
+                } else {
+                    html += `<div class="space-y-2">`;
+                    html += sortedItems.map(item => `
+                        <div class="packing-item p-3 rounded-lg shadow-sm flex items-center cursor-pointer border border-gray-200 transition duration-150 ${item.checked ? 'checked' : 'bg-white hover:shadow-md'}" 
+                             onclick="togglePackingItem('${item.id}', '${item.category}')">
+                            
+                            <!-- Checkbox Icon (方塊勾選) -->
+                            <div class="flex-shrink-0 mr-4 text-2xl">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${item.checked ? 'text-green-500' : 'text-gray-400'}">
+                                    ${item.checked 
+                                        ? '<rect width="18" height="18" x="3" y="3" rx="4"/><path d="m9 12 2 2 4-4"/>' 
+                                        : '<rect width="18" height="18" x="3" y="3" rx="4"/>'
+                                    }
+                                </svg>
+                            </div>
+
+                            <!-- 項目名稱 -->
+                            <span class="text-base text-gray-800 font-medium truncate flex-1 leading-relaxed">
+                                ${item.name}
+                            </span>
+                        </div>
+                    `).join('');
+                    html += `</div>`;
+                }
+                return html;
+            };
+            
+            // Check if data is loaded
+            if (!packingList.carryOn && !packingList.checkedLuggage) {
+                content.innerHTML = `<p class="text-center text-gray-500 py-6">載入中...</p>`;
+                return;
+            }
+
+            let finalHTML = '';
+            // 隨身行李 (Carry-on)
+            finalHTML += renderCategory('隨身行李 (Carry-on)', packingList.carryOn || []);
+            // 托運行李 (Checked Luggage)
+            finalHTML += renderCategory('托運行李 (Checked Luggage)', packingList.checkedLuggage || []);
+            
+            content.innerHTML = finalHTML;
+        }
+
+
+        // --- 核心工具函式 ---
+
+        /**
+         * 開啟 Google Map 搜尋指定地點
+         * @param {string} query - 地圖搜尋的關鍵字
+         */
+        window.openGoogleMap = function(query) {
+            if (query) {
+                const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+                window.open(url, '_blank');
+            }
+        };
+
+        /**
+         * 控制 Modal 彈出視窗的顯示/隱藏
+         * @param {string} modalId - Modal 元素的 ID
+         */
+        window.toggleModal = function(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                document.body.style.overflow = 'hidden'; // 阻止背景滾動
+                if (modalId === 'packing-list-modal') {
+                    renderPackingList(); // 每次打開清單時重新渲染
+                }
+            } else {
+                modal.classList.add('hidden');
+                document.body.style.overflow = '';
+            }
+        }
+
+        // --- 行程數據與渲染邏輯 (保留舊有功能) ---
+        const HOTEL_NAME = "Fresa Inn (INN 名古屋駅櫻通口)";
+        const HOTEL_ADDRESS = "4 Chome-4-15 Meieki, Nakamura Ward, Nagoya, Aichi 450-0002日本";
+        const HOTEL_MAP_QUERY = "Fresa Inn 名古屋駅櫻通口";
+
+        const travelItinerary = [
+            {
+                day: "Day 1",
+                date: "3/13 (五)",
+                theme: "TPE啟程與抵達名古屋",
+                weather: "晴朗, 18°C",
+                events: [
+                    { time: "15:15", activity: "桃園機場第二航廈集合", note: "請確認手機/護照/電子機票", location: "桃園國際機場 第二航廈" },
+                    { time: "17:15", activity: "TPE 起飛", note: "班機代號:CI150" },
+                    { time: "19:00", activity: "晚餐", note: "飛機餐" },
+                    { time: "21:05", activity: "抵達名古屋", note: "領取行李，準備 VISIT JAPAN QR CODE", location: "中部國際機場" },
+                    { time: "21:37", activity: "轉乘名鐵", note: "需要買對號座", location: "名古屋車站" },
+                    { time: "22:57", activity: "入住 " + HOTEL_NAME, note: "中央剪票口出站走4分鐘", location: HOTEL_MAP_QUERY }
+                ],
+                hotel: HOTEL_ADDRESS,
+                hotelMapQuery: HOTEL_MAP_QUERY
+            },
+            {
+                day: "Day 2",
+                date: "3/14 (六)",
+                theme: "文化與歷史探索",
+                weather: "多雲, 15°C",
+                events: [
+                    { time: "8:00", activity: "早餐", note: "Komeda客多美咖啡 OR SHINPACHI日式烤魚早餐"},
+                    { time: "9:30", activity: "名古屋科學館", note: "提前買六/日的周末環保券(可搭地鐵/巴士)", location: "名古屋科學館" },
+                    { time: "12:00", activity: "午餐", note: "飛騨牛燒肉 午間套餐", location: "燒肉 馬喰一代 名古屋EAST" },
+                    { time: "13:30", activity: "熱田神宮", note: "搭乘名城線前往 熱田神宮西", location: "熱田神宮" },
+                    { time: "14:30", activity: "熱田神宮 寶物館", note: "500日圓門票", location: "熱田神宮 寶物館" },
+                    { time: "16:00", activity: "Aeon購物 或 榮町逛街", note: "Aeon有超市/榮有百貨" },
+                    { time: "19:00", activity: "晚餐", note: "德兵衛迴轉壽司 OR 美登利壽司" }
+                ],
+                hotel: HOTEL_ADDRESS,
+                hotelMapQuery: HOTEL_MAP_QUERY
+            },
+            {
+                day: "Day 3",
+                date: "3/15 (日)",
+                theme: "吉卜力公園之旅(攜帶護照)",
+                weather: "晴朗, 16°C",
+                events: [
+                    { time: "7:00", activity: "早餐", note: "便利商店 OR 前一天先買" },
+                    { time: "7:30", activity: "名古屋車站 --> 藤丘(東山線) --> 愛地球紀念公園(LINIMO)", note: "使用周末環保券+SUICA", location: "名古屋車站" },
+                    { time: "9:00", activity: "吉卜力公園 大倉庫", note: "須帶護照驗票", location: "Ghibli’s Grand Warehouse" },
+                    { time: "12:00", activity: "午餐", note: "園區內的MOS Burge", location: "モスバーガー キッチンカーKC3" },
+                    { time: "12:30", activity: "魔女之谷", note: "魔女之家 (安雅與魔女)/ 霍爾的移動城堡/ 歐奇諾之家 (天空之城)", location: "魔女の谷" },
+                    { time: "15:00", activity: "動動力之森 (搭公車)", note: "小月與小梅之家" , location: "どんどこ森"},
+                    { time: "15:30", activity: "魔法之里(搭公車)", note: "時間不夠可跳過" , location: "もののけの里" },
+                    { time: "16:20", activity: "青春之丘" , note: "貓咪事務所(貓的報恩)/ 地球屋(心之谷)" , location: "青春の丘" },
+                    { time: "19:30", activity: "晚餐 (近清水站)", note: "串銀 坊(烤雞肉串) OR なまらむーちょ(羊肉燒肉)", location: "なまらむーちょ" }
+                ],
+                hotel: HOTEL_ADDRESS,
+                hotelMapQuery: HOTEL_MAP_QUERY
+            },
+            {
+                day: "Day 4",
+                date: "3/16 (一)",
+                theme: "犬山城之旅",
+                weather: "多雲, 15°C",
+                events: [
+                    { time: "8:20", activity: "早餐 + 參加六之市", note: "刷SUICA搭名鐵線到 本笠寺(4號月台)", location: "笠寺観音（笠覆寺）"  },
+                    { time: "9:00", activity: "Workman採買防水裝備", note: "防水鞋/ 防風防水外套", location: "ワークマン 名古屋笠寺店" },
+                    { time: "11:00", activity: "午餐 ", note: "harbs 午間套餐(不能訂位)", location: "ハーブス 栄本店" },
+                    { time: "12:30", activity: "買犬山城套票", note: "名鐵售票口，順便去買艾許奶油泡芙", location: "名古屋車站" },
+                    { time: "13:40", activity: "犬山城", note: "搭特急到犬山遊園地", location: "犬山城" },
+                    { time: "15:00", activity: "城下町逛街", note: "三光稻荷神社 體驗洗錢(100羊)" },
+                    { time: "17:00", activity: "晚餐", note: "蓬ぜん 鰻魚料, 順路買 尾張犬山菓匠", location:"蓬ぜん 鰻魚料理" }
+                ],
+                hotel: HOTEL_ADDRESS,
+                hotelMapQuery: HOTEL_MAP_QUERY
+            },
+            {
+                day: "Day 5",
+                date: "3/17 (二)",
+                theme: "中山道 - 妻籠宿與馬龍宿",
+                weather: "陣雨, 12°C",
+                events: [
+                    { time: "7:30", activity: "早餐", note: "前一天先點餐，車上吃", location: "マクドナルド 名古屋ゲートウォーク店" },
+                    { time: "8:00", activity: "交通 (前往馬籠)", note: "搭乘JR信濃 到中川津車站 -> 轉搭 Magome巴士 到 Magome " },
+                    { time: "9:35", activity: "馬籠宿 散步", note: "可以買中山道證明", location: "馬籠宿" },
+                    { time: "10:30", activity: "午餐", note: "お食事処 樹梨, 不餓可以不吃或點五平餅等小東西", location: "お食事処 樹梨" },
+                    { time: "11:30", activity: "馬籠宿 走到 妻籠宿", note: "6.5km" },
+                    { time: "14:30", activity: "妻籠宿 散步", note: "可蓋章中山道證明", location: "GOOD DAY Cafe" },                    
+                    { time: "15:20", activity: "交通(回名古屋車站)", note: "搭高速巴士 需預約" , location: "〒399-5302 長野県木曽郡南木曽町吾妻"},
+                    { time: "17:30", activity: "晚餐", note: "矢場豬排 or 法式豬排 katuretu matumura or 雞翅 世界的山匠", location: "カツレツMATUMURA" },
+                    { time: "有力氣的話", activity: "泡湯", note: "Canal resort(名古屋駛) or Urban Quar(榮)泡湯，有無料送迎巴士!", location: "キャナル・リゾート" }                  
+                ],
+                hotel: HOTEL_ADDRESS,
+                hotelMapQuery: HOTEL_MAP_QUERY
+            },
+            {
+                day: "Day 6",
+                date: "3/18 (三)",
+                theme: "市集+逛街日",
+                weather: "晴朗, 17°C",
+                events: [
+                    { time: "7:50", activity: "早餐", note: "我先提早去排隊", location: "天然酵母の食パン専門店 つばめパン＆Milk 名駅店" },
+                    { time: "9:30", activity: "大須觀音骨董市集 + 商圈", note: "青柳總本家/築地銀章魚/覺王山水果大福/osu bakery", location: "大須観音" },
+                    { time: "11:30", activity: "午餐", note: "大須觀音 suzuya炸豬排(要排隊) OR 金山 燒肉二郎(可預約)", location: "焼肉&手打ち冷麺 二郎 KANAYAMA" },
+                    { time: "下午時段", activity: "自由活動/整理行李", note: "預留充足時間整理行李與休息" },
+                    { time: "17:00", activity: "晚餐", note: "自行處理" }
+                ],
+                hotel: HOTEL_ADDRESS,
+                hotelMapQuery: HOTEL_MAP_QUERY
+            },
+            {
+                day: "Day 7",
+                date: "3/19 (四)",
+                shortDate: "3/19",
+                theme: "👋 歸程日",
+                weather: "晴朗, 19°C",
+                events: [
+                    { time: "8:00", activity: "Check out", note: "檢查手機錢包護照 & 行李秤重" },
+                    { time: "8:30", activity: "搭乘名鐵特急(部分對號座)名古屋機", note: "可刷suica坐自由座" },
+                    { time: "9:11", activity: "華航 CHECK IN ", location: "抵達名古屋機場 第一航廈" },
+                    { time: "9:30", activity: "機場採購", note: "仙貝蝦之里", location: "仙貝蝦之里" },
+                    { time: "10:00", activity: "午餐", note: "T1 4F有很多選擇", location:"半藏製麵" },
+                    { time: "10:30", activity:"過安檢", note: "後面有免稅購物" },
+                    { time: "11:25", activity: "登機", note: "12:05 起飛" },
+                    { time: "14:40", activity: "TPE 降落", note: "平安抵達台灣", location: "桃園國際機場" }
+                ],
+                hotel: "本日為返程日，無住宿安排。祝您旅途順利！",
+                hotelMapQuery: null 
+            }
+        ];
+
+        const container = document.getElementById('itinerary-container');
+        const tabsContainer = document.getElementById('day-tabs');
+
+
+        // *** 刪除 renderItineraryOverview 相關函式 ***
+
+
+        /**
+         * 渲染特定日期的行程
+         * @param {number} dayIndex - 行程在 travelItinerary 陣列中的索引 (0 = Day 1)
+         */
+        function renderItinerary(dayIndex) {
+            const dayPlan = travelItinerary[dayIndex];
+            
+            // 清空舊內容
+            container.innerHTML = ''; 
+
+            // 1. 頂部日期/天氣卡片 (模擬圖片風格)
+            const dateWeatherCard = document.createElement('div');
+            dateWeatherCard.className = 'bg-white p-6 rounded-xl shadow-lg flex justify-between items-center mb-6';
+            
+            // 處理天氣圖標
+            let weatherIcon = '☀️';
+            if (dayPlan.weather.includes('雨') || dayPlan.weather.includes('陣雨')) {
+                 weatherIcon = '🌧️';
+            } else if (dayPlan.weather.includes('多雲')) {
+                weatherIcon = '☁️';
+            } else if (dayPlan.weather.includes('晴朗')) {
+                weatherIcon = '☀️';
+            }
+
+            dateWeatherCard.innerHTML = `
+                <div>
+                    <p class="text-3xl font-extrabold primary-text">${dayPlan.date}</p>
+                    <p class="text-xl text-gray-700">${dayPlan.theme}</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-4xl text-yellow-500">${weatherIcon}</p>
+                    <p class="text-2xl font-bold primary-text">${dayPlan.weather.split(',')[1] || '17°C'}</p>
+                    <p class="text-sm text-gray-500">${dayPlan.weather.split(',')[0] || '晴朗'}</p>
+                </div>
+            `;
+            container.appendChild(dateWeatherCard);
+
+            // 2. 創建活動列表
+            dayPlan.events.forEach(event => {
+                const eventCard = document.createElement('div');
+                eventCard.className = 'itinerary-card bg-white p-4 rounded-xl shadow-md mb-4 flex space-x-4 items-start';
+                
+                // 處理活動圖標
+                const activityIcon = event.activity.includes("交通") ? '🚗' : 
+                                    event.activity.includes("餐") || event.activity.includes("享用早餐") ? '🍽️' : 
+                                    event.activity.includes("機場") || event.activity.includes("登機") ? '✈️' : 
+                                    event.activity.includes("購物") || event.activity.includes("採購") ? '🛍️' : 
+                                    event.activity.includes("入住") || event.activity.includes("Check out") ? '🛎️' : 
+                                    '📍';
+
+                // 處理活動名稱：如果是景點，則可點擊
+                let activityHTML;
+                if (event.location) {
+                    // 使用 span 元素模擬連結，並綁定點擊事件
+                    activityHTML = `
+                        <span class="text-lg map-clickable hover:opacity-80 transition-opacity leading-snug" 
+                              onclick="openGoogleMap('${event.location.replace(/'/g, "\\'")}')">
+                            ${event.activity}
+                        </span>
+                    `;
+                } else {
+                    activityHTML = `<p class="text-lg font-bold text-gray-800 leading-snug">${event.activity}</p>`;
+                }
+
+                eventCard.innerHTML = `
+                    <!-- 左側：時間與圖標 -->
+                    <div class="flex-shrink-0 text-center w-20">
+                        <p class="text-lg font-bold text-gray-600">${event.time}</p>
+                        <p class="text-2xl mt-1">${activityIcon}</p>
+                    </div>
+                    
+                    <!-- 右側：活動內容與備註 -->
+                    <div class="flex-1 min-w-0">
+                        ${activityHTML}
+                        <!-- 備註 -->
+                        <p class="mt-1 text-base text-gray-500 font-medium leading-snug">▶ ${event.note}</p>
+                    </div>
+                `;
+                container.appendChild(eventCard);
+            });
+
+            // 3. 顯示飯店地址卡片
+            const hotelCard = document.createElement('div');
+            hotelCard.className = 'hotel-card mt-8 p-6 rounded-xl shadow-lg';
+            
+            if (dayIndex === travelItinerary.length - 1) { // 處理最後一天返程日
+                hotelCard.innerHTML = `
+                    <p class="text-xl font-bold primary-text">✅ 當日行程備註</p>
+                    <p class="text-lg mt-2 text-gray-700">${dayPlan.hotel}</p>
+                `;
+            } else { // 顯示住宿地址，使其可點擊
+                hotelCard.innerHTML = `
+                    <p class="text-xl font-bold primary-text">🏠 當晚入住飯店 (點擊地圖)</p>
+                    <p class="text-lg font-semibold mt-2 map-clickable hover:opacity-80 transition-opacity"
+                       onclick="openGoogleMap('${dayPlan.hotelMapQuery.replace(/'/g, "\\'")}')">
+                        ${HOTEL_NAME}
+                    </p>
+                    <p class="text-base mt-1 leading-relaxed text-gray-600">${dayPlan.hotel}</p>
+                `;
+            }
+            container.appendChild(hotelCard);
+
+            // 將視窗捲動到行程內容頂部
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        
+        /**
+         * 處理點擊事件：切換選中的 Tab 和顯示內容
+         */
+        function selectDay(dayIndex) {
+            // 1. 更新按鈕的 Active 狀態
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('tab-active', 'primary-bg', 'text-white');
+                btn.classList.add('bg-white', 'text-gray-800');
+            });
+            // 為當前點擊的按鈕添加 active 樣式
+            const currentBtn = document.getElementById(`day-tab-${dayIndex}`);
+            if (currentBtn) {
+                currentBtn.classList.remove('bg-white', 'text-gray-800');
+                currentBtn.classList.add('tab-active', 'primary-bg', 'text-white');
+                
+                currentBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+
+            // 2. 渲染對應的行程內容
+            renderItinerary(dayIndex);
+        }
+
+        /**
+         * 動態生成頂部的 Tab 按鈕並綁定事件
+         */
+        function setupTabs() {
+            travelItinerary.forEach((dayPlan, index) => {
+                const button = document.createElement('button');
+                button.id = `day-tab-${index}`;
+                // 初始樣式
+                button.className = 'tab-button bg-white text-gray-800 rounded-xl shadow-md p-3 mx-2 flex-shrink-0';
+                button.innerHTML = `
+                    <p class="text-sm text-gray-500">${dayPlan.date.split(' ')[0]}</p>
+                    <p class="text-lg font-semibold">${dayPlan.day}</p>
+                `;
+                
+                // 點擊事件：呼叫 selectDay 函式
+                button.addEventListener('click', () => selectDay(index));
+                
+                tabsContainer.appendChild(button);
+            });
+            
+            // 預設選中並顯示 Day 1
+            selectDay(0);
+        }
+
+        /**
+         * 設置 Icon 按鈕的點擊事件監聽器，確保 Modal 能夠正確彈出
+         */
+        function setupModalListeners() {
+            // *** 刪除 overviewBtn 相關程式碼 ***
+            const packingListBtn = document.getElementById('packing-list-icon-button');
+
+            if (packingListBtn) {
+                packingListBtn.addEventListener('click', () => toggleModal('packing-list-modal'));
+            } else {
+                console.error("錯誤: 行李清單 Icon 按鈕未找到。");
+            }
+        }
+
+        // 頁面載入完成後執行設定
+        window.onload = function() {
+            initFirebase(); // 初始化 Firebase
+            setupTabs();
+            setupModalListeners(); // 在 DOM 載入後綁定事件
+        };
+
+    </script>
+</body>
+</html>
+
